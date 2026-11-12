@@ -22,6 +22,16 @@ class PhoneSelfCheckExtendedReportTest {
                       pixels: Any? = true, nonce: Any? = "n") =
         r.acceptTargetFrame(stage, "owner", "run", "n", "owner", "run", nonce, 1, ok, error,
             matched, complete, pixels, 30)
+    private fun scroll(r: PhoneSelfCheckReport, ok: Any? = true, error: Any? = null,
+                       attempted: Any? = true, matched: Any? = true, complete: Any? = true,
+                       scrolled: Any? = true, nonce: Any? = "n") =
+        r.acceptTargetScroll("owner", "run", "n", "owner", "run", nonce, 1, ok, error,
+            attempted, matched, complete, scrolled, 20)
+    private fun back(r: PhoneSelfCheckReport, ok: Any? = true, error: Any? = null,
+                     attempted: Any? = true, matched: Any? = true, complete: Any? = true,
+                     backed: Any? = true, nonce: Any? = "n") =
+        r.acceptTargetBack("owner", "run", "n", "owner", "run", nonce, 1, ok, error,
+            attempted, matched, complete, backed, 20)
     private fun baseline(r: PhoneSelfCheckReport, vector: Any? = "baseline", focus: Any? = "baseline") {
         assertEquals(8, r.acceptTargetCreate("owner", "run", "n", "owner", "run", "n", 1,
             true, null, true, 8, 1, vector, focus))
@@ -33,9 +43,9 @@ class PhoneSelfCheckExtendedReportTest {
     private fun finishMain(r: PhoneSelfCheckReport, nonce: Any? = "release", vector: Any? = "unchanged", focus: Any? = "unchanged") =
         r.acceptFinalMain("owner", "run", "release", "owner", "run", nonce, 1, true, null, vector, focus)
 
-    @Test fun extendedProfileDoesNotInventOcrScrollBackOrMainSuccess() {
+    @Test fun extendedProfileDoesNotInventOcrOrMainSuccess() {
         val r = report()
-        for (stage in listOf(Stage.OCR, Stage.INPUT_PROBE, Stage.SCROLL, Stage.BACK, Stage.MAIN)) {
+        for (stage in listOf(Stage.OCR, Stage.INPUT_PROBE, Stage.MAIN)) {
             r.update(stage, State.PASS, true)
             assertEquals("not_run", row(r, stage)["state"])
             assertEquals(false, row(r, stage)["observed"])
@@ -46,6 +56,34 @@ class PhoneSelfCheckExtendedReportTest {
         assertEquals("pass", row(r, Stage.TEXT_ASCII)["state"])
         assertEquals("pass", row(r, Stage.TEXT_ZH)["state"])
         assertEquals("target_c2", Profile.parse("target_c2")?.wire)
+    }
+
+    @Test fun scrollAndBackRequireExactCompleteRepliesAndExposeObservedPass() {
+        val r = report()
+        assertTrue(scroll(r))
+        assertEquals("pass", row(r, Stage.SCROLL)["state"])
+        assertEquals(true, row(r, Stage.SCROLL)["observed"])
+        assertTrue(back(r))
+        assertEquals("pass", row(r, Stage.BACK)["state"])
+        assertEquals(true, row(r, Stage.BACK)["observed"])
+        val badScroll = report()
+        assertFalse(scroll(badScroll, ok = false, error = "targetReadbackMismatch", scrolled = false))
+        assertEquals("fail", row(badScroll, Stage.SCROLL)["state"])
+        assertEquals(true, row(badScroll, Stage.SCROLL)["observed"])
+        val unknownScroll = report()
+        assertFalse(scroll(unknownScroll, ok = false, error = "targetReadbackMismatch",
+            matched = null, complete = null, scrolled = null))
+        assertEquals("unknown", row(unknownScroll, Stage.SCROLL)["state"])
+        assertEquals("targetReadbackMismatch", row(unknownScroll, Stage.SCROLL)["reason"])
+        val badBack = report()
+        assertFalse(back(badBack, ok = false, error = "targetReadbackMismatch", backed = false))
+        assertEquals("fail", row(badBack, Stage.BACK)["state"])
+        assertEquals(true, row(badBack, Stage.BACK)["observed"])
+        val noAttempt = report()
+        assertFalse(back(noAttempt, ok = false, error = "inputRejected", attempted = false,
+            matched = null, complete = null, backed = null))
+        assertEquals("fail", row(noAttempt, Stage.BACK)["state"])
+        assertEquals(false, row(noAttempt, Stage.BACK)["observed"])
     }
 
     @Test fun acceptedTextWithUnknownPostReadSurvivesCleanupAndCancellation() {
@@ -197,9 +235,13 @@ class PhoneSelfCheckExtendedReportTest {
             val r = PhoneSelfCheckReport(profile)
             assertFalse(text(r))
             assertFalse(frame(r, FrameStage.CAPTURE))
+            assertFalse(scroll(r))
+            assertFalse(back(r))
             finishMain(r)
             assertEquals("not_run", row(r, Stage.TEXT_ASCII)["state"])
             assertEquals("not_run", row(r, Stage.CAPTURE)["state"])
+            assertEquals("not_run", row(r, Stage.SCROLL)["state"])
+            assertEquals("not_run", row(r, Stage.BACK)["state"])
             assertEquals("not_run", row(r, Stage.MAIN)["state"])
             assertNull(row(r, Stage.OCR)["reason"])
         }

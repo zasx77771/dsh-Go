@@ -8,7 +8,8 @@ class SelfCheckTargetC2RequestTest {
     private val run = "123e4567-e89b-42d3-a456-426614174001"
     private fun nonce(i: Int) = "123e4567-e89b-42d3-a456-4266141741" + i.toString().padStart(2, '0')
     private val steps = listOf(SelfCheckTargetRequest.Step.CREATE, SelfCheckTargetRequest.Step.READ,
-        SelfCheckTargetRequest.Step.TAP, SelfCheckTargetRequest.Step.TEXT_ASCII, SelfCheckTargetRequest.Step.TEXT_ZH,
+        SelfCheckTargetRequest.Step.TAP, SelfCheckTargetRequest.Step.SCROLL, SelfCheckTargetRequest.Step.BACK,
+        SelfCheckTargetRequest.Step.TEXT_ASCII, SelfCheckTargetRequest.Step.TEXT_ZH,
         SelfCheckTargetRequest.Step.CAPTURE, SelfCheckTargetRequest.Step.CONTINUITY,
         SelfCheckTargetRequest.Step.CONTINUITY, SelfCheckTargetRequest.Step.CONTINUITY)
     private fun request(i: Int) = SelfCheckTargetRequest(steps[i], owner, run, nonce(i), true)
@@ -18,7 +19,7 @@ class SelfCheckTargetC2RequestTest {
     }
     private fun parse(v: Map<String, Any?>) = SelfCheckTargetRequest.parse(v.keys) { v[it] }
 
-    @Test fun exactSevenOperationsDoNotAcceptFreePhaseOrTextOrBothVersions() {
+    @Test fun exactOperationsDoNotAcceptFreePhaseOrTextOrBothVersions() {
         for (i in steps.indices) {
             assertEquals(request(i), parse(values(i)))
             for (key in values(i).keys) assertNull(parse(values(i).apply { remove(key) }))
@@ -32,22 +33,22 @@ class SelfCheckTargetC2RequestTest {
         }))
     }
 
-    @Test fun nineSlotsDeriveFramePhasesAndCannotGrowAfterLastSuccess() {
+    @Test fun elevenSlotsDeriveFramePhasesAndCannotGrowAfterLastSuccess() {
         val sequence = SelfCheckTargetSequence(owner, run, true)
         for (i in steps.indices) {
             assertNull(sequence.enter(request(i)))
-            if (i >= 5) assertEquals(i - 4, sequence.framePhase)
+            if (i >= 7) assertEquals(i - 6, sequence.framePhase)
             sequence.complete(steps[i])
         }
-        repeat(20) { assertEquals("alreadyAttempted", sequence.enter(request(8).copy(nonce = nonce(20 + it)))) }
+        repeat(20) { assertEquals("alreadyAttempted", sequence.enter(request(10).copy(nonce = nonce(20 + it)))) }
     }
 
     @Test fun failedContinuityCannotReplayWithFreshNonceOrSkipItsConsumedSlot() {
         val sequence = SelfCheckTargetSequence(owner, run, true)
-        for (i in 0..5) { assertNull(sequence.enter(request(i))); sequence.complete(steps[i]) }
-        assertNull(sequence.enter(request(6))) // Actual image/check may now fail or the reply may be lost.
-        assertEquals("alreadyAttempted", sequence.enter(request(7)))
-        assertEquals("alreadyAttempted", sequence.enter(request(6)))
+        for (i in 0..7) { assertNull(sequence.enter(request(i))); sequence.complete(steps[i]) }
+        assertNull(sequence.enter(request(8))) // Actual image/check may now fail or the reply may be lost.
+        assertEquals("alreadyAttempted", sequence.enter(request(9)))
+        assertEquals("alreadyAttempted", sequence.enter(request(8)))
         assertEquals(2, sequence.framePhase)
     }
 

@@ -449,6 +449,38 @@ internal class PhoneSelfCheck(
             changed()
             if (!tapped || run.profile != Profile.TARGET_C2) return
 
+            for ((stage, op) in listOf(Stage.SCROLL to Proto.OP_SELF_CHECK_TARGET_SCROLL,
+                    Stage.BACK to Proto.OP_SELF_CHECK_TARGET_BACK)) {
+                if (!mayStart(run)) { cancelFromWorker(run); return }
+                pendingStage = stage
+                beganStageAt = clock()
+                update(run, stage, State.RUNNING, false)
+                val nonce = UUID.randomUUID().toString()
+                val request = targetRequest(run, op, nonce)
+                val reply = run.io.call {
+                    if (!mayStart(run)) { cancelFromWorker(run); return@call null }
+                    OwnerScopeProtocol.execute(run.borrow.channel, run.io.owner, request) {
+                        check(admit(run) { run.io.checkDispatch() })
+                    }
+                } ?: return
+                val matched = synchronized(lock) {
+                    if (stage == Stage.SCROLL)
+                        run.report.acceptTargetScroll(run.io.owner, targetRun, nonce,
+                            reply.get(Proto.OWNER), reply.get(Proto.TARGET_RUN), reply.get(Proto.STEP_NONCE),
+                            reply.get(run.targetVersionKey), reply.get(Proto.OK), reply.get(Proto.ERROR),
+                            reply.get(Proto.ACTION_ATTEMPTED), reply.get(Proto.TARGET_MATCHED),
+                            reply.get(Proto.TREE_COMPLETE), reply.get(Proto.SCROLL_MATCHED), clock() - beganStageAt)
+                    else
+                        run.report.acceptTargetBack(run.io.owner, targetRun, nonce,
+                            reply.get(Proto.OWNER), reply.get(Proto.TARGET_RUN), reply.get(Proto.STEP_NONCE),
+                            reply.get(run.targetVersionKey), reply.get(Proto.OK), reply.get(Proto.ERROR),
+                            reply.get(Proto.ACTION_ATTEMPTED), reply.get(Proto.TARGET_MATCHED),
+                            reply.get(Proto.TREE_COMPLETE), reply.get(Proto.BACK_MATCHED), clock() - beganStageAt)
+                }
+                changed()
+                if (!matched) return
+            }
+
             for ((stage, op) in listOf(Stage.TEXT_ASCII to Proto.OP_SELF_CHECK_TARGET_TEXT_ASCII,
                     Stage.TEXT_ZH to Proto.OP_SELF_CHECK_TARGET_TEXT_ZH)) {
                 if (!mayStart(run)) { cancelFromWorker(run); return }

@@ -67,8 +67,8 @@ internal class PhoneSelfCheckReport(val profile: Profile = Profile.PROBE_B) {
             Profile.TARGET_C1 -> stage in setOf(Stage.DEVICE, Stage.CHANNEL, Stage.DISPLAY,
                 Stage.LAUNCH, Stage.TREE, Stage.TAP, Stage.CLEANUP)
             Profile.TARGET_C2 -> stage in setOf(Stage.DEVICE, Stage.CHANNEL, Stage.DISPLAY,
-                Stage.LAUNCH, Stage.TREE, Stage.TAP, Stage.TEXT_ASCII, Stage.TEXT_ZH,
-                Stage.CAPTURE, Stage.CONTINUITY, Stage.CLEANUP)
+                Stage.LAUNCH, Stage.TREE, Stage.TAP, Stage.SCROLL, Stage.BACK,
+                Stage.TEXT_ASCII, Stage.TEXT_ZH, Stage.CAPTURE, Stage.CONTINUITY, Stage.CLEANUP)
         }
         if (stage == Stage.MAIN) {
             if (steps[stage]?.reason == Reason.TARGET_WRONG_MAIN) return
@@ -160,6 +160,58 @@ internal class PhoneSelfCheckReport(val profile: Profile = Profile.PROBE_B) {
             val reason = Reason.fromWire(error)
             update(Stage.TAP, if (!attempted || matched == true && complete == true && counter == false)
                 State.FAIL else State.UNKNOWN, attempted, reason, durationMs)
+        }
+        return ok == true
+    }
+
+    /** Fixed native scroll only; accepted survives a failed post-read or connection cleanup. */
+    fun acceptTargetScroll(
+        expectedOwner: String, expectedRun: String, expectedNonce: String,
+        owner: Any?, run: Any?, nonce: Any?, version: Any?, ok: Any?, error: Any?,
+        attempted: Any?, matched: Any?, complete: Any?, scrolled: Any?, durationMs: Long,
+    ): Boolean {
+        if (profile != Profile.TARGET_C2 ||
+            !targetReply(expectedOwner, expectedRun, expectedNonce, owner, run, nonce, version, ok, error) ||
+            attempted !is Boolean || matched != null && matched !is Boolean ||
+            complete != null && complete !is Boolean || scrolled != null && scrolled !is Boolean ||
+            !attempted && (matched != null || complete != null || scrolled != null) ||
+            (matched == null) != (complete == null) || (complete == null) != (scrolled == null) ||
+            scrolled != null && complete != true ||
+            ok != (attempted && matched == true && complete == true && scrolled == true)) {
+            update(Stage.SCROLL, State.UNKNOWN, false, Reason.INVALID_RESPONSE, durationMs)
+            return false
+        }
+        if (ok == true) {
+            update(Stage.SCROLL, State.PASS, true, durationMs = durationMs)
+        } else {
+            val failed = !attempted || matched == true && complete == true && scrolled == false
+            update(Stage.SCROLL, if (failed) State.FAIL else State.UNKNOWN, attempted, Reason.fromWire(error), durationMs)
+        }
+        return ok == true
+    }
+
+    /** Fixed native back only; accepted survives a failed post-read or connection cleanup. */
+    fun acceptTargetBack(
+        expectedOwner: String, expectedRun: String, expectedNonce: String,
+        owner: Any?, run: Any?, nonce: Any?, version: Any?, ok: Any?, error: Any?,
+        attempted: Any?, matched: Any?, complete: Any?, backed: Any?, durationMs: Long,
+    ): Boolean {
+        if (profile != Profile.TARGET_C2 ||
+            !targetReply(expectedOwner, expectedRun, expectedNonce, owner, run, nonce, version, ok, error) ||
+            attempted !is Boolean || matched != null && matched !is Boolean ||
+            complete != null && complete !is Boolean || backed != null && backed !is Boolean ||
+            !attempted && (matched != null || complete != null || backed != null) ||
+            (matched == null) != (complete == null) || (complete == null) != (backed == null) ||
+            backed != null && complete != true ||
+            ok != (attempted && matched == true && complete == true && backed == true)) {
+            update(Stage.BACK, State.UNKNOWN, false, Reason.INVALID_RESPONSE, durationMs)
+            return false
+        }
+        if (ok == true) {
+            update(Stage.BACK, State.PASS, true, durationMs = durationMs)
+        } else {
+            val failed = !attempted || matched == true && complete == true && backed == false
+            update(Stage.BACK, if (failed) State.FAIL else State.UNKNOWN, attempted, Reason.fromWire(error), durationMs)
         }
         return ok == true
     }

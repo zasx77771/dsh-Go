@@ -32,6 +32,15 @@ class TargetStateTest {
         assertTrue(state.facts().cleanupPending)
     }
 
+    @Test fun launchUnavailableWithoutActivityCanCloseCleanly() {
+        val state = started()
+        state.seal()
+        state.launchUnavailable()
+        assertTrue(state.facts().closed)
+        assertTrue(state.finishIfClosed())
+        assertFalse(state.facts().created)
+    }
+
     @Test fun lockTaskModeNeverAttemptsALaunchAndroidWouldSilentlyDrop() {
         val state = TargetState(run)
         assertTrue(state.schedule(7))
@@ -137,6 +146,20 @@ class TargetStateTest {
         state.teardownCompleted(activity)
         empty(state)
         assertTrue(state.facts().wrongMain)
+        assertTrue(state.facts().closed)
+    }
+
+    @Test fun unreadableDisplayIdStillAllowsStructuralEmptyTaskProof() {
+        val state = started()
+        val activity = Any()
+        assertTrue(state.register(activity, 7, 12))
+        state.seal()
+        state.destroyed(activity, true, false)
+        state.teardownCompleted(activity)
+        assertTrue(state.observeTask(state.taskReadStamp(), 12, TargetContract.ACTIVITY_CLASS,
+            TargetContract.identifier(run), null, false, 0, true))
+        assertFalse(state.facts().wrongMain)
+        assertTrue(state.finishIfClosed())
         assertTrue(state.facts().closed)
     }
 

@@ -6,4 +6,6 @@
     <item name="phone_selfcheck_target_edit" type="id" />
     <item name="phone_selfcheck_target_pattern" type="id" />
     <item name="phone_selfcheck_target_phase" type="id" />
+    <item name="phone_selfcheck_target_scroll" type="id" />
+    <item name="phone_selfcheck_target_back" type="id" />
 </resources>

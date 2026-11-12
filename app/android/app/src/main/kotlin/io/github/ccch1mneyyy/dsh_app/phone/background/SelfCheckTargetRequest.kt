@@ -6,6 +6,7 @@ import io.github.ccch1mneyyy.dsh_app.phone.selfcheck.TargetContract
 internal data class SelfCheckTargetRequest(val step: Step, val owner: String, val run: String, val nonce: String, val c2: Boolean = false) {
     enum class Step(val op: String) {
         CREATE(Proto.OP_SELF_CHECK_TARGET_CREATE), READ(Proto.OP_SELF_CHECK_TARGET_READ), TAP(Proto.OP_SELF_CHECK_TARGET_TAP),
+        SCROLL(Proto.OP_SELF_CHECK_TARGET_SCROLL), BACK(Proto.OP_SELF_CHECK_TARGET_BACK),
         TEXT_ASCII(Proto.OP_SELF_CHECK_TARGET_TEXT_ASCII), TEXT_ZH(Proto.OP_SELF_CHECK_TARGET_TEXT_ZH),
         CAPTURE(Proto.OP_SELF_CHECK_TARGET_CAPTURE), CONTINUITY(Proto.OP_SELF_CHECK_TARGET_CONTINUITY),
     }
@@ -33,14 +34,15 @@ internal data class SelfCheckTargetRequest(val step: Step, val owner: String, va
 /** The Core lock serializes these bounded slots. A consumed but failed slot cannot be replayed. */
 internal class SelfCheckTargetSequence(val owner: String, val run: String, val c2: Boolean = false) {
     private val steps = if (c2) listOf(SelfCheckTargetRequest.Step.CREATE, SelfCheckTargetRequest.Step.READ,
-        SelfCheckTargetRequest.Step.TAP, SelfCheckTargetRequest.Step.TEXT_ASCII, SelfCheckTargetRequest.Step.TEXT_ZH,
+        SelfCheckTargetRequest.Step.TAP, SelfCheckTargetRequest.Step.SCROLL, SelfCheckTargetRequest.Step.BACK,
+        SelfCheckTargetRequest.Step.TEXT_ASCII, SelfCheckTargetRequest.Step.TEXT_ZH,
         SelfCheckTargetRequest.Step.CAPTURE, SelfCheckTargetRequest.Step.CONTINUITY,
         SelfCheckTargetRequest.Step.CONTINUITY, SelfCheckTargetRequest.Step.CONTINUITY)
         else SelfCheckTargetRequest.Step.entries.take(3)
     private val nonces = ArrayList<String>(steps.size)
     private var completed = 0
     private var releaseNonce: String? = null
-    val framePhase: Int get() { check(c2 && completed in 5..8); return completed - 4 }
+    val framePhase: Int get() { check(c2 && completed in 7..10); return completed - 6 }
 
     fun enter(request: SelfCheckTargetRequest): String? {
         if (request.owner != owner || request.run != run || request.c2 != c2) return "identityChanged"

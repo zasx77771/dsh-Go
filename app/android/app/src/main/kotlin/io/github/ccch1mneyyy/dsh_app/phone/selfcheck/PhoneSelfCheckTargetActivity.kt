@@ -13,10 +13,12 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.text.InputType
+import android.view.KeyEvent
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import io.github.ccch1mneyyy.dsh_app.R
 import io.github.ccch1mneyyy.dsh_app.i18n.AppStrings
@@ -30,20 +32,50 @@ class PhoneSelfCheckTargetActivity : Activity() {
     private var ticket: PhoneSelfCheckTarget.Ticket? = null
     private var phaseLabel: TextView? = null
     private var pattern: PatternView? = null
+    private var backLabel: TextView? = null
+    private var backCount = 0
+    private var registered = false
+    private var registeredDisplayId = -1
+
+    private companion object {
+        const val TAG = "DshSelfCheckTarget"
+        const val REGISTER_RETRIES = 20
+        const val REGISTER_RETRY_MS = 50L
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val original = PhoneSelfCheckTarget.find(intent.identifier)
         ticket = original
-        if (original == null || !original.state.register(this, display?.displayId ?: -1, taskId)) {
+        if (original == null) {
             finish()
             return
         }
-        val body = LinearLayout(this).apply {
+        val density = resources.displayMetrics.density
+        val inset = (24 * density).toInt()
+        val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            val inset = (24 * resources.displayMetrics.density).toInt()
             setPadding(inset, inset, inset, inset)
         }
+        val scrollLabel = TextView(this).apply {
+            id = R.id.phone_selfcheck_target_scroll
+            text = TargetContract.scroll(0)
+            textSize = 12f
+        }
+        backLabel = TextView(this).apply {
+            id = R.id.phone_selfcheck_target_back
+            text = TargetContract.back(0)
+            textSize = 12f
+        }
+        root.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(scrollLabel)
+            addView(backLabel)
+        })
+        val body = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        body.addView(View(this), LinearLayout.LayoutParams(1, (64 * density).toInt()))
         body.addView(TextView(this).apply {
             text = AppStrings.get(this@PhoneSelfCheckTargetActivity, R.string.phone_selfcheck_target_title)
             textSize = 20f
@@ -87,15 +119,66 @@ class PhoneSelfCheckTargetActivity : Activity() {
             body.addView(pixels, LinearLayout.LayoutParams(TargetFramePattern.WIDTH_PX, TargetFramePattern.HEIGHT_PX))
             body.requestFocus()
         }
-        setContentView(body)
+        body.addView(View(this), LinearLayout.LayoutParams(1, (960 * density).toInt()))
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            addView(body)
+        }
+        scroll.setOnScrollChangeListener { _, _, scrollY, _, _ -> scrollLabel.text = TargetContract.scroll(scrollY) }
+        root.addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+        setContentView(root)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        registerIfVisible()
+    }
+
+    /**
+     * ColorOS may expose the Activity display only after the window is attached. Never register a
+     * guessed display id: wait briefly for the real display, then fail without claiming creation.
+     */
+    private fun registerIfVisible(attempt: Int = 0) {
+        val original = ticket ?: return
+        if (registered || isFinishing || isDestroyed) return
+        val displayId = display?.displayId ?: -1
+        if (displayId <= 0) {
+            if (attempt < REGISTER_RETRIES) {
+                window.decorView.postDelayed({ registerIfVisible(attempt + 1) }, REGISTER_RETRY_MS)
+            } else {
+                android.util.Log.w(TAG, "target register display unavailable after ${attempt}x$REGISTER_RETRY_MS ms")
+                original.state.launchUnavailable()
+                finish()
+            }
+            return
+        }
+        if (!original.state.register(this, displayId, taskId)) {
+            android.util.Log.w(TAG, "target register rejected displayId=$displayId taskId=$taskId")
+            finish()
+            return
+        }
+        registered = true
+        registeredDisplayId = displayId
+        android.util.Log.i(TAG, "target register displayId=$displayId taskId=$taskId")
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.keyCode == KeyEvent.KEYCODE_BACK) {
+            if (event.action == KeyEvent.ACTION_UP) {
+                backCount++
+                backLabel?.text = TargetContract.back(backCount)
+            }
+            return true
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     internal fun advance(original: PhoneSelfCheckTarget.Ticket, stage: TargetContract.FrameStage): Boolean {
         check(Looper.myLooper() == Looper.getMainLooper())
         val label = phaseLabel ?: return false
         val pixels = pattern ?: return false
-        if (ticket !== original || isFinishing || isDestroyed ||
-            !original.state.advance(this, display?.displayId ?: -1, stage)) return false
+        if (ticket !== original || !registered || isFinishing || isDestroyed ||
+            !original.state.advance(this, registeredDisplayId, stage)) return false
         label.text = stage.phase.toString()
         pixels.phase = stage.phase
         pixels.invalidate()
@@ -278,8 +361,13 @@ internal object PhoneSelfCheckTarget {
                 val info = task.taskInfo
                 if (info.baseIntent.component?.packageName != app.packageName) continue
                 // TaskInfo.displayId is hidden on the Android versions supported by this probe.
-                // Preserve the actual display fact; an unreadable field must not acknowledge cleanup.
-                val displayId = info.javaClass.getField("displayId").getInt(info)
+                // When reflection is blocked, keep the task identity evidence and treat the display
+                // fact as unreadable; the structural empty-task proof remains authoritative.
+                val displayId = try {
+                    info.javaClass.getField("displayId").getInt(info)
+                } catch (_: ReflectiveOperationException) {
+                    null
+                }
                 if (ticket.state.observeTask(readStamp, info.taskId, info.baseIntent.component?.className,
                         info.baseIntent.identifier, displayId, info.isRunning,
                         info.numActivities, info.topActivity == null)) {

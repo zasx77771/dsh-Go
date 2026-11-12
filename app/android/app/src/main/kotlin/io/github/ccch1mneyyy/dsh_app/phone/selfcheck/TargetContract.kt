@@ -9,6 +9,8 @@ internal object TargetContract {
     const val EDIT_ID = "phone_selfcheck_target_edit"
     const val PATTERN_ID = "phone_selfcheck_target_pattern"
     const val PHASE_ID = "phone_selfcheck_target_phase"
+    const val SCROLL_ID = "phone_selfcheck_target_scroll"
+    const val BACK_ID = "phone_selfcheck_target_back"
     const val ASCII_TEXT = "DSH check 42"
     const val ZH_TEXT = "自检通过四二"
     enum class Profile { C1, C2 }
@@ -21,5 +23,7 @@ internal object TargetContract {
     fun identifier(targetRun: String): String = "dsh-selfcheck-c1:$targetRun"
     fun marker(targetRun: String): String = "dsh-c1:$targetRun"
     fun counter(value: Int): String = value.toString()
+    fun scroll(value: Int): String = value.toString()
+    fun back(value: Int): String = value.toString()
     fun viewId(packageName: String, name: String): String = "$packageName:id/$name"
 }

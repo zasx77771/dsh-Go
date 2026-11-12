@@ -4,7 +4,8 @@ import io.github.ccch1mneyyy.dsh_app.phone.selfcheck.TargetContract
 
 /** Per real tree walk. Raw node text is compared immediately, never retained or returned. */
 internal class SelfCheckTargetEvidence(run: String, counter: Int, private val c2: Boolean = false,
-                                      private val expectedText: String? = null, private val expectedPhase: Int? = null) {
+                                      private val expectedText: String? = null, private val expectedPhase: Int? = null,
+                                      private val expectedScroll: Int? = null, private val expectedBack: Int? = null) {
     data class Bounds(val left: Int, val top: Int, val right: Int, val bottom: Int) {
         val width: Int get() = right - left
         val height: Int get() = bottom - top
@@ -13,13 +14,19 @@ internal class SelfCheckTargetEvidence(run: String, counter: Int, private val c2
     val editorId = TargetContract.viewId(Proto.APP_PACKAGE, TargetContract.EDIT_ID)
     private val patternId = TargetContract.viewId(Proto.APP_PACKAGE, TargetContract.PATTERN_ID)
     private val phaseId = TargetContract.viewId(Proto.APP_PACKAGE, TargetContract.PHASE_ID)
+    private val scrollId = TargetContract.viewId(Proto.APP_PACKAGE, TargetContract.SCROLL_ID)
+    private val backId = TargetContract.viewId(Proto.APP_PACKAGE, TargetContract.BACK_ID)
     private var editors = 0
     private var patterns = 0
     private var phases = 0
+    private var scrolls = 0
+    private var backs = 0
     private var editorUsable = false
     private var patternVisible = false
     private var phaseMatches = false
     private var textMatches = false
+    private var scrollValue: Int? = null
+    private var backValue: Int? = null
     var patternBounds: Bounds? = null; private set
     var editorBounds: Bounds? = null; private set
 
@@ -50,6 +57,8 @@ internal class SelfCheckTargetEvidence(run: String, counter: Int, private val c2
             }
             patternId -> { patterns++; patternVisible = visible }
             phaseId -> { phases++; phaseMatches = visible && (expectedPhase == null || exact(text, expectedPhase.toString())) }
+            scrollId -> { scrolls++; scrollValue = text?.toString()?.trim()?.toIntOrNull() }
+            backId -> { backs++; backValue = text?.toString()?.trim()?.toIntOrNull() }
         }
         when (id) {
             markerId -> { markers++; markerMatches = visible && exact(description, marker) }
@@ -62,6 +71,8 @@ internal class SelfCheckTargetEvidence(run: String, counter: Int, private val c2
         (!c2 || editors == 1 && editorUsable && patterns == 1 && patternVisible && phases == 1 && phaseMatches)
     val textMatched: Boolean get() = c2 && editors == 1 && textMatches
     val counterMatched: Boolean get() = counters == 1 && counterMatches
+    val scrollMatched: Boolean get() = c2 && expectedScroll != null && scrolls == 1 && scrollValue != null && scrollValue!! >= expectedScroll
+    val backMatched: Boolean get() = c2 && expectedBack != null && backs == 1 && backValue == expectedBack
 
     private fun exact(value: CharSequence?, expected: String): Boolean =
         value != null && value.length == expected.length && value.toString() == expected

@@ -461,7 +461,8 @@ class PrivilegedDisplayCore internal constructor(
                 response.putBoolean(Proto.TREE_COMPLETE, false)
                 response.putBoolean(Proto.INITIAL_COUNTER_MATCHED, false)
             }
-            SelfCheckTargetRequest.Step.TAP, SelfCheckTargetRequest.Step.TEXT_ASCII,
+            SelfCheckTargetRequest.Step.TAP, SelfCheckTargetRequest.Step.SCROLL,
+            SelfCheckTargetRequest.Step.BACK, SelfCheckTargetRequest.Step.TEXT_ASCII,
             SelfCheckTargetRequest.Step.TEXT_ZH -> response.putBoolean(Proto.ACTION_ATTEMPTED, false)
             SelfCheckTargetRequest.Step.CAPTURE, SelfCheckTargetRequest.Step.CONTINUITY -> {
                 response.putBoolean(Proto.TARGET_MATCHED, false)
@@ -527,6 +528,23 @@ class PrivilegedDisplayCore internal constructor(
                 response.putBoolean(Proto.ACTION_ATTEMPTED, true)
                 injectTap(button.bounds.centerX(), button.bounds.centerY(), false)
                 awaitTargetSnapshot(parsed.run, 1, response, initial = false, windowId = previous.windowId)
+            }
+            SelfCheckTargetRequest.Step.SCROLL -> {
+                val previous = targetSnapshot ?: throw Fault("outOfOrder")
+                requireTargetComponent()
+                response.putBoolean(Proto.ACTION_ATTEMPTED, true)
+                val middle = height / 2
+                injectSwipe(width / 2, middle + 40, width / 2, middle - 40, 300)
+                targetSnapshot = awaitTargetSnapshot(parsed.run, 1, response, initial = false,
+                    windowId = previous.windowId, expectedScroll = 1)
+            }
+            SelfCheckTargetRequest.Step.BACK -> {
+                val previous = targetSnapshot ?: throw Fault("outOfOrder")
+                requireTargetComponent()
+                response.putBoolean(Proto.ACTION_ATTEMPTED, true)
+                globalKey("back")
+                targetSnapshot = awaitTargetSnapshot(parsed.run, 1, response, initial = false,
+                    windowId = previous.windowId, expectedBack = 1)
             }
             SelfCheckTargetRequest.Step.TEXT_ASCII, SelfCheckTargetRequest.Step.TEXT_ZH -> {
                 targetText(parsed, response)
@@ -688,10 +706,12 @@ class PrivilegedDisplayCore internal constructor(
             throw Fault("targetChanged")
     }
 
-    private fun readTargetSnapshot(run: String, counter: Int, response: Bundle? = null, initial: Boolean = false, windowId: Int? = null): TargetSnapshot {
+    private fun readTargetSnapshot(run: String, counter: Int, response: Bundle? = null, initial: Boolean = false, windowId: Int? = null,
+                                   expectedScroll: Int? = null, expectedBack: Int? = null): TargetSnapshot {
         requireTargetComponent()
         val c2 = targetSequence?.c2 == true
-        val evidence = SelfCheckTargetEvidence(run, counter, c2, if (c2) "" else null, if (c2) 0 else null)
+        val evidence = SelfCheckTargetEvidence(run, counter, c2, if (c2) "" else null, if (c2) 0 else null,
+            expectedScroll = expectedScroll, expectedBack = expectedBack)
         val tree = try { readTree(displayId(), Proto.APP_PACKAGE, inspectVisual = c2, targetEvidence = evidence) }
         catch (e: Fault) { throw Fault(when (e.code) {
             "treeUnavailable", "textConnectionUnavailable" -> "targetUnavailable"
@@ -708,26 +728,34 @@ class PrivilegedDisplayCore internal constructor(
                 evidence.editorBounds?.inside(width, height) == true && evidence.patternBounds?.inside(width, height) == true)
         response?.putBoolean(Proto.TARGET_MATCHED, matched)
         response?.putBoolean(Proto.TREE_COMPLETE, tree.complete)
+        if (expectedScroll != null) response?.putBoolean(Proto.SCROLL_MATCHED, tree.complete && evidence.scrollMatched)
+        if (expectedBack != null) response?.putBoolean(Proto.BACK_MATCHED, tree.complete && evidence.backMatched)
         if (initial) response?.putBoolean(Proto.INITIAL_COUNTER_MATCHED, tree.complete && evidence.counterMatched)
         else if (tree.complete) response?.putBoolean(Proto.COUNTER_MATCHED, evidence.counterMatched)
         if (!tree.complete) throw Fault("targetUnavailable")
         if (!matched) throw Fault("targetChanged")
         if (!evidence.counterMatched) throw Fault("targetReadbackMismatch")
+        if (expectedScroll != null && !evidence.scrollMatched) throw Fault("targetReadbackMismatch")
+        if (expectedBack != null && !evidence.backMatched) throw Fault("targetReadbackMismatch")
         return TargetSnapshot(run, checkNotNull(tree.targetWindowId), tree.elements.indexOf(button) + 1, checkNotNull(button))
     }
 
     /** Repeats only bounded read observations inside this consumed op, never the tap or launch. */
-    private fun awaitTargetSnapshot(run: String, counter: Int, response: Bundle, initial: Boolean, windowId: Int? = null): TargetSnapshot {
+    private fun awaitTargetSnapshot(run: String, counter: Int, response: Bundle, initial: Boolean, windowId: Int? = null,
+                                    expectedScroll: Int? = null, expectedBack: Int? = null): TargetSnapshot {
         val deadline = SystemClock.uptimeMillis() + if (initial) 4000L else 1500L
         while (true) {
             // Only this latest read may supply its facts. Never carry an earlier matching
             // window across a later identity/query failure; ACTION_ATTEMPTED stays sticky.
             val counterKey = if (initial) Proto.INITIAL_COUNTER_MATCHED else Proto.COUNTER_MATCHED
-            for (key in listOf(Proto.TARGET_MATCHED, Proto.TREE_COMPLETE, counterKey)) {
+            val keys = mutableListOf(Proto.TARGET_MATCHED, Proto.TREE_COMPLETE, counterKey)
+            if (expectedScroll != null) keys += Proto.SCROLL_MATCHED
+            if (expectedBack != null) keys += Proto.BACK_MATCHED
+            for (key in keys) {
                 if (initial) response.putBoolean(key, false) else response.remove(key)
             }
             try {
-                return readTargetSnapshot(run, counter, response, initial, windowId)
+                return readTargetSnapshot(run, counter, response, initial, windowId, expectedScroll, expectedBack)
             } catch (e: Fault) {
                 if (e.code !in setOf("targetUnavailable", "targetReadbackMismatch") || SystemClock.uptimeMillis() >= deadline) throw e
                 sleepChecked(50)

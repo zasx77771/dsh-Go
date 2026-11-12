@@ -50,6 +50,16 @@ internal class TargetState(val targetRun: String, val profile: TargetContract.Pr
     fun launchReturned() = synchronized(lock) { launchFinished = true; lock.notifyAll() }
     fun seal() = synchronized(lock) { sealed = true; lock.notifyAll() }
 
+    /** No Activity ever registered; there is nothing to tear down and no target was created. */
+    fun launchUnavailable() = synchronized(lock) {
+        if (created) return
+        sealed = true
+        launchFinished = true
+        finalized = true
+        instance = null
+        lock.notifyAll()
+    }
+
     /**
      * Even a wrong-display or sealed late creation is a fact, but it must not draw the target. Only the
      * relaunch of a configuration-destroyed instance succeeds it; cleanup then finishes that replacement.
@@ -105,7 +115,7 @@ internal class TargetState(val targetRun: String, val profile: TargetContract.Pr
     /** Values come from the actual AppTask's TaskInfo; identity is checked again, not pre-approved. */
     fun observeTask(
         readStamp: Any?,
-        actualTaskId: Int, componentClass: String?, identifier: String?, displayId: Int,
+        actualTaskId: Int, componentClass: String?, identifier: String?, displayId: Int?,
         running: Boolean, activities: Int, topAbsent: Boolean,
     ): Boolean = synchronized(lock) {
         val matches = (taskId == null || actualTaskId == taskId) && componentClass == TargetContract.ACTIVITY_CLASS &&

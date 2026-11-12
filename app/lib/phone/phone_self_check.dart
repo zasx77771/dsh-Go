@@ -16,7 +16,7 @@ const phoneSelfCheckStages = <String>[
 const phoneSelfCheckProfiles = <String>['probe_b', 'target_c1', 'target_c2'];
 const _probeCovered = {'device', 'channel', 'display', 'input_probe', 'cleanup'};
 const _targetCovered = {'device', 'channel', 'display', 'launch', 'tree', 'tap', 'cleanup'};
-const _targetC2Covered = {..._targetCovered, 'text_ascii', 'text_zh', 'capture', 'continuity'};
+const _targetC2Covered = {..._targetCovered, 'scroll', 'back', 'text_ascii', 'text_zh', 'capture', 'continuity'};
 const _runStates = {'idle', 'running', 'cleaning', 'done', 'cancelled', 'cleanup_pending'};
 const _stepStates = {'not_run', 'running', 'pass', 'fail', 'skipped', 'unknown', 'cancelled'};
 const _reasons = {
@@ -282,10 +282,10 @@ String phoneSelfCheckMarkdown(PhoneSelfCheckSnapshot snapshot) {
     out.writeln('MAIN only records an observed wrong-display failure; no MAIN pass or absence of disturbance is claimed.');
     out.writeln('Input receiver, scrolling, back, text, images, continuity and OCR are not tested.');
   } else if (snapshot.profile == 'target_c2') {
-    out.writeln('Fixed local target: launch/tree/tap, fixed ASCII and Chinese ACTION_SET_TEXT replacement/readback, local pattern capture and three controlled refresh observations.');
+    out.writeln('Fixed local target: launch/tree/tap, fixed scroll/back actions, fixed ASCII and Chinese ACTION_SET_TEXT replacement/readback, local pattern capture and three controlled refresh observations.');
     out.writeln('Controlled refresh does not test FPS, smoothness or an uninterrupted stream. No producer timestamp freshness is claimed.');
     out.writeln('MAIN compares finite task and focus samples only; unchanged samples cannot prove no disturbance between samples. MAIN never passes. Changes may include user actions.');
-    out.writeln('OCR is not installed or tested. Input receiver, scrolling and back are not tested.');
+    out.writeln('OCR is not installed or tested. Input receiver is not tested.');
   } else if (snapshot.profile == 'probe_b') {
     out.writeln('Only device, selected channel, presentation display, input receiver and cleanup are covered.');
     out.writeln('Activity launch, text, images, continuity, MAIN disturbance and OCR are not tested.');
